@@ -1,0 +1,210 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<title>Eren - Cazador de Titanes 3D</title>
+<style>
+body{margin:0;overflow:hidden;font-family:Arial;background:#87ceeb}
+#ui{position:fixed;top:15px;left:15px;color:white;
+background:#172b39dd;padding:15px;border-radius:12px}
+#help{position:fixed;bottom:15px;left:10%;width:80%;
+text-align:center;color:white;background:#172b39dd;padding:10px}
+</style>
+</head>
+<body>
+<div id="ui">
+<h2>EREN: CAZADOR DE TITANES</h2>
+<div id="stats">Humanidad en peligro...</div>
+</div>
+<div id="help">WASD: mover | ESPACIO: impulso | CLIC: atacar | F: transformarse</div>
+<script src="https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.min.js"></script>
+<script>
+const scene=new THREE.Scene();
+scene.background=new THREE.Color(0x87ceeb);
+scene.fog=new THREE.Fog(0x87ceeb,50,180);
+
+const camera=new THREE.PerspectiveCamera(75,innerWidth/innerHeight,.1,500);
+const renderer=new THREE.WebGLRenderer({antialias:true});
+renderer.setSize(innerWidth,innerHeight);
+renderer.shadowMap.enabled=true;
+document.body.appendChild(renderer.domElement);
+
+scene.add(new THREE.HemisphereLight(0xffffff,0x526344,2));
+const sun=new THREE.DirectionalLight(0xffffff,3);
+sun.position.set(30,60,20);
+scene.add(sun);
+
+const material=c=>new THREE.MeshStandardMaterial({color:c});
+function cube(parent,x,y,z,w,h,d,color){
+ const m=new THREE.Mesh(new THREE.BoxGeometry(w,h,d),material(color));
+ m.position.set(x,y,z);
+ m.castShadow=true;
+ parent.add(m);
+ return m;
+}
+
+// Suelo y ciudad
+cube(scene,0,-1,0,500,1,500,0x668653);
+for(let i=0;i<50;i++){
+ let x=(Math.random()-.5)*120;
+ let z=(Math.random()-.5)*120;
+ let h=4+Math.random()*9;
+ cube(scene,x,h/2,z,4,h,4,0xbab6a7);
+ cube(scene,x,h+1,z,5,2,5,0x754d43);
+}
+
+// Eren humano
+const eren=new THREE.Group();
+scene.add(eren);
+cube(eren,0,1,0,.7,1,.4,0x586d80);
+cube(eren,0,1.8,0,.4,.4,.4,0xc58f78);
+cube(eren,-.5,1,0,.2,.8,.25,0x9babb8);
+cube(eren,.5,1,0,.2,.8,.25,0x9babb8);
+cube(eren,-.2,.25,0,.22,.5,.25,0x34404a);
+cube(eren,.2,.25,0,.22,.5,.25,0x34404a);
+cube(eren,-.7,1,.5,.06,.06,1,0xddeeff);
+cube(eren,.7,1,.5,.06,.06,1,0xddeeff);
+
+// Transformación
+let titanMode=false;
+let titanBody=null;
+let health=100,kills=0;
+const enemies=[];
+
+function spawnTitan(size,x,z){
+ const t=new THREE.Group();
+ t.position.set(x,0,z);
+ const s=size;
+ cube(t,0,s,0,s*.6,s,s*.4,0xb87865);
+ cube(t,0,s*1.7,0,s*.45,s*.45,s*.4,0xc58f78);
+ cube(t,-s*.45,s,0,s*.2,s,.25*s,0xb87865);
+ cube(t,s*.45,s,0,s*.2,s,.25*s,0xb87865);
+ cube(t,-s*.2,s*.25,0,s*.2,s*.5,s*.2,0xb87865);
+ cube(t,s*.2,s*.25,0,s*.2,s*.5,s*.2,0xb87865);
+ t.userData.hp=size>4?3:size>2?2:1;
+ t.userData.size=size;
+ scene.add(t);
+ enemies.push(t);
+}
+for(let i=0;i<12;i++){
+ spawnTitan(1.5+Math.random()*4,
+ (Math.random()-.5)*65,
+ (Math.random()-.5)*65);
+}
+
+let keys={};
+let yaw=0,pitch=0;
+addEventListener('keydown',e=>{
+ keys[e.code]=true;
+ if(e.code==='KeyF')transform();
+ if(e.code==='KeyR')location.reload();
+});
+addEventListener('keyup',e=>keys[e.code]=false);
+addEventListener('mousemove',e=>{
+ if(document.pointerLockElement===renderer.domElement){
+ yaw-=e.movementX*.002;
+ pitch-=e.movementY*.002;
+ pitch=Math.max(-.7,Math.min(.7,pitch));
+ }
+});
+renderer.domElement.addEventListener('click',()=>{
+ renderer.domElement.requestPointerLock?.();
+ attack();
+});
+
+function transform(){
+ titanMode=!titanMode;
+ eren.visible=!titanMode;
+ if(titanMode){
+  titanBody=new THREE.Group();
+  scene.add(titanBody);
+  cube(titanBody,0,3,0,2,3,1,0xb54d45);
+  cube(titanBody,0,5,0,1.2,1.2,1,0xc58f78);
+  cube(titanBody,-1.3,3,0,.6,2.5,.6,0xb54d45);
+  cube(titanBody,1.3,3,0,.6,2.5,.6,0xb54d45);
+  cube(titanBody,-.5,.9,0,.6,1.8,.7,0xb54d45);
+  cube(titanBody,.5,.9,0,.6,1.8,.7,0xb54d45);
+  document.getElementById('stats').textContent=
+   '¡EREN SE HA TRANSFORMADO EN TITÁN!';
+ }else{
+  scene.remove(titanBody);
+  titanBody=null;
+ }
+}
+
+// Ataques
+function attack(){
+ const pos=titanMode&&titanBody?titanBody.position:eren.position;
+ let target=null,dist=titanMode?9:6;
+ for(const t of enemies){
+  if(!t.parent)continue;
+  const d=pos.distanceTo(t.position);
+  if(d<dist){dist=d;target=t}
+ }
+ if(target){
+  target.userData.hp-=titanMode?2:1;
+  if(target.userData.hp<=0){
+   scene.remove(target);
+   kills++;
+   document.getElementById('stats').textContent=
+    '¡Titán derrotado! Total: '+kills;
+  }else{
+   document.getElementById('stats').textContent='¡Impacto!';
+  }
+ }
+}
+
+let last=performance.now();
+function animate(now){
+ requestAnimationFrame(animate);
+ const dt=Math.min((now-last)/1000,.05);
+ last=now;
+
+ let obj=titanMode?titanBody:eren;
+ if(obj){
+  const speed=keys.Space?18:7;
+  const forward=new THREE.Vector3(-Math.sin(yaw),0,-Math.cos(yaw));
+  const right=new THREE.Vector3(Math.cos(yaw),0,-Math.sin(yaw));
+  if(keys.KeyW)obj.position.addScaledVector(forward,speed*dt);
+  if(keys.KeyS)obj.position.addScaledVector(forward,-speed*dt);
+  if(keys.KeyA)obj.position.addScaledVector(right,-speed*dt);
+  if(keys.KeyD)obj.position.addScaledVector(right,speed*dt);
+  obj.rotation.y=yaw;
+  camera.position.set(obj.position.x+Math.sin(yaw)*.5,
+   obj.position.y+(titanMode?8:2.5),
+   obj.position.z+Math.cos(yaw)*.5);
+  camera.lookAt(
+   obj.position.x-Math.sin(yaw)*10,
+   obj.position.y+(titanMode?5:1.5)+Math.sin(pitch)*8,
+   obj.position.z-Math.cos(yaw)*10
+  );
+ }
+
+ for(const t of enemies){
+  if(!t.parent)continue;
+  const target=obj.position;
+  const dir=target.clone().sub(t.position);
+  dir.y=0;
+  if(dir.length()>3){
+   dir.normalize();
+   t.position.addScaledVector(dir,dt*.6);
+  }else{
+   health=Math.max(0,health-dt*2);
+  }
+ }
+ if(health<=0){
+  document.getElementById('stats').textContent=
+   '¡HAS PERDIDO! Pulsa R para reiniciar.';
+ }
+ renderer.render(scene,camera);
+}
+animate(last);
+
+addEventListener('resize',()=>{
+ camera.aspect=innerWidth/innerHeight;
+ camera.updateProjectionMatrix();
+ renderer.setSize(innerWidth,innerHeight);
+});
+</script>
+</body>
+</html>
